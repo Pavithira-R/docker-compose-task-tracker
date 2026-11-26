@@ -262,6 +262,14 @@ Restore the original configuration or update the database user's password delibe
 - Tested task creation, completion, reopening, and deletion.
 - Confirmed tasks remained saved after containers were recreated.
 
+  ### CI/CD Pipeline
+
+GitHub Actions builds the application and starts PostgreSQL in an isolated test environment.
+The pipeline runs four automated tests covering database health, task creation/completion/reopening/deletion, empty input validation, and CSRF protection.
+Pull requests run the build and tests. Successful pushes to main also publish the tested image to Docker Hub with latest and commit-specific tags.
+Docker Hub credentials are stored in GitHub Actions secrets. Temporary test containers and volumes are removed afterward.
+Server deployment is handled separately.
+
 ### Project Scope
 
 This project demonstrates a local Docker Compose application with database integration and persistent storage.
