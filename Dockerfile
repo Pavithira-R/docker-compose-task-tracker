@@ -12,6 +12,7 @@ RUN useradd --create-home appuser
 
 COPY app.py .
 COPY templates ./templates
+COPY tests ./tests
 
 USER appuser
 
