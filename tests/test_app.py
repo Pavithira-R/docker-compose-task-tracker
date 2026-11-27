@@ -36,14 +36,14 @@ class TaskTrackerTests(unittest.TestCase):
         self.assertIsNotNone(match, "CSRF token missing from page")
         return match.group(1)
      
-        def test_metrics(self):
+    def test_metrics(self):
         self.client.get("/")
         response = self.client.get("/metrics")
         self.assertEqual(response.status_code, 200)
         self.assertIn(
             "flask_http_request_total",
             response.get_data(as_text=True),
-        )
+        )    
 
     def test_health(self):
         response = self.client.get("/health")
