@@ -366,6 +366,76 @@ Verification:
 3. Confirmed the application recovered without manually starting containers.
 4. Confirmed the saved task remained available.
 
+
+### Application Monitoring
+
+Prometheus collects Flask application metrics every 15 seconds.
+Grafana displays them in the Task Tracker Monitoring dashboard.
+
+#### Dashboard Panels
+
+| Panel | Purpose |
+|---|---|
+| Application Reachable | Shows whether Prometheus can scrape the application |
+| Requests per Second | Five-minute average HTTP request rate |
+| Average Response Time | Average Flask request processing time |
+| Server Errors per Second | Rate of HTTP 500–599 responses |
+
+Request metrics include application health checks.
+Successful metrics collection does not independently confirm
+database health; use `/health` to check database connectivity.
+
+#### Configuration Files
+
+- `compose.monitoring.yaml`: Prometheus service and storage settings.
+- `compose.grafana.yaml`: Grafana service and persistent storage.
+- `monitoring/prometheus.yml`: Application scrape configuration.
+- `monitoring/grafana/datasources/prometheus.yaml`: Grafana data source.
+- `monitoring/task-tracker-dashboard.json`: Exported dashboard.
+
+#### Start Application and Monitoring
+
+On the configured AWS server, run:
+
+```sh
+sudo docker compose -f compose.aws.yaml -f compose.monitoring.yaml -f compose.grafana.yaml up -d
+```
+
+Prometheus retains metrics for up to one day, with a 256 MB
+retention-size setting. Actual disk usage also includes
+operational files and overhead.
+
+#### Access Through SSH
+
+Prometheus and Grafana bind only to the server's loopback interface.
+No inbound AWS rules are opened for ports 9090 or 3000.
+
+From your laptop, substitute your key path and EC2 public IP:
+
+```sh
+ssh -i "<path-to-key.pem>" -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -L 127.0.0.1:3000:127.0.0.1:3000 -L 127.0.0.1:9090:127.0.0.1:9090 ubuntu@<EC2-public-IP>
+```
+
+Keep the SSH connection open, then visit:
+
+- Grafana: http://localhost:3000
+- Prometheus: http://localhost:9090
+
+For a fresh Grafana installation, sign in with the default
+admin credentials and immediately choose a private password.
+Import `monitoring/task-tracker-dashboard.json` into Grafana
+and select the provisioned Prometheus data source if prompted.
+
+#### Verification
+
+- Confirmed the application exposes `/metrics`.
+- Confirmed Prometheus reports `up{job="task-tracker"} = 1`.
+- Verified all four dashboard panels display data.
+- Stopped the web service and confirmed reachability changed to 0.
+- Restored the service and confirmed reachability returned to 1.
+
+The dashboard provides visibility; external alert notifications
+have not been configured.
 ### Project Scope
 
 This project demonstrates a local Docker Compose application with database integration and persistent storage.
