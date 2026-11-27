@@ -5,6 +5,8 @@ from flask import Flask, abort, redirect, render_template, request, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from sqlalchemy import URL, text
+from prometheus_client import CollectorRegistry
+from prometheus_flask_exporter import PrometheusMetrics
 
 db = SQLAlchemy()
 
@@ -33,6 +35,11 @@ def create_app():
 
     db.init_app(app)
     CSRFProtect(app)
+     PrometheusMetrics(
+        app,
+        registry=CollectorRegistry(),
+        group_by="endpoint",
+    )
 
     @app.cli.command("init-db")
     def init_db():
