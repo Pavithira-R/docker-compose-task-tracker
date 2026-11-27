@@ -35,10 +35,10 @@ def create_app():
 
     db.init_app(app)
     CSRFProtect(app)
-     PrometheusMetrics(
-        app,
-        registry=CollectorRegistry(),
-        group_by="endpoint",
+    PrometheusMetrics(
+    app,
+    registry=CollectorRegistry(),
+    group_by="endpoint",
     )
 
     @app.cli.command("init-db")
