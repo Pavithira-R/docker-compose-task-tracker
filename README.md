@@ -1,8 +1,53 @@
-## Task Tracker with Docker Compose
+## Task Tracker: Complete DevOps Project
 
-A responsive task management application built with Flask and PostgreSQL. Docker Compose manages the application and database as separate services.
+A responsive task management application built with Flask and PostgreSQL,
+taken through the full DevOps lifecycle: containerization, automated testing,
+image publishing, cloud deployment on AWS, automated releases, and monitoring.
 
 Users can create, complete, reopen, and delete tasks. PostgreSQL stores tasks in a persistent Docker volume.
+
+### Project Overview
+
+| Stage | What it covers | Where |
+|---|---|---|
+| Source control | Git history and GitHub repository | This repository |
+| Containerization | Application image running as a non-root user | `Dockerfile` |
+| Multi-container application | Flask and PostgreSQL with health checks and a persistent volume | `compose.yaml` |
+| Continuous integration | Build, automated tests, and image publishing to Docker Hub | `.github/workflows/ci.yml`, `tests/` |
+| Cloud deployment | Ubuntu EC2 instance in AWS Mumbai (`ap-south-1`) | `compose.aws.yaml` |
+| Automated deployment | Every successful push to `main` is released to EC2 | `.github/workflows/deploy.yml` |
+| Monitoring | Prometheus metrics and a Grafana dashboard | `compose.monitoring.yaml`, `compose.grafana.yaml`, `monitoring/` |
+
+### System Architecture
+
+```mermaid
+flowchart LR
+    dev["Developer"] -->|git push| repo["GitHub repository"]
+    repo --> ci["GitHub Actions<br/>Test and Publish"]
+    ci -->|tested image| hub["Docker Hub"]
+    ci -->|on success| deploy["GitHub Actions<br/>Deploy to AWS"]
+    deploy -->|OIDC sign-in| iam["AWS IAM role"]
+    deploy -->|Run Command| ssm["AWS Systems Manager"]
+    ssm --> ec2
+
+    subgraph ec2["AWS EC2 instance (Ubuntu, ap-south-1)"]
+        web["web<br/>Flask + Gunicorn"] --> db[("PostgreSQL")]
+        prom["Prometheus"] -->|scrapes /metrics| web
+        graf["Grafana"] --> prom
+    end
+
+    hub -->|docker pull| web
+    user["Browser"] -->|port 8082| web
+    admin["Administrator"] -->|SSH tunnel| graf
+```
+
+1. A push to `main` starts the **Test and Publish** workflow, which builds
+   the image, runs the tests, and publishes the image to Docker Hub.
+2. When the tests pass, the **Deploy to AWS** workflow signs in to AWS with
+   OIDC and uses Systems Manager to deploy that exact image to EC2.
+3. On EC2, Docker Compose runs the application, PostgreSQL, Prometheus,
+   and Grafana. Only SSH and the application port are reachable from
+   outside, and only from an allowed IP address.
 
 ### Features
 
@@ -26,8 +71,13 @@ Users can create, complete, reopen, and delete tasks. PostgreSQL stores tasks in
 | Flask-WTF | CSRF protection |
 | Gunicorn | Application server |
 | Docker Compose | Service configuration and management |
+| GitHub Actions | Continuous integration and automated deployment |
+| Docker Hub | Container image registry |
+| AWS EC2 | Cloud server hosting the application |
+| AWS IAM (OIDC) and Systems Manager | Keyless deployment access and remote commands |
+| Prometheus and Grafana | Metrics collection and dashboards |
 
-### Architecture
+### Local Architecture
 
 The browser accesses the Flask application on localhost port 8082.
 The application connects to PostgreSQL using the Compose service name `db`.
