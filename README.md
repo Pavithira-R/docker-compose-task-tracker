@@ -351,6 +351,21 @@ delete the saved database.
 Back up required data before terminating the instance and
 deleting its storage.
 
+### Cloud Recovery Verification
+
+The application is hosted on AWS EC2 in Mumbai.
+
+- Both services use the `unless-stopped` restart policy.
+- PostgreSQL stores data in a persistent Docker volume.
+- SSH and application access are restricted to my public IP.
+- Environment credentials remain outside version control.
+
+Verification:
+1. Created a task named "AWS persistence test".
+2. Rebooted the EC2 instance.
+3. Confirmed the application recovered without manually starting containers.
+4. Confirmed the saved task remained available.
+
 ### Project Scope
 
 This project demonstrates a local Docker Compose application with database integration and persistent storage.
