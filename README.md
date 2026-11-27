@@ -268,7 +268,8 @@ GitHub Actions builds the application and starts PostgreSQL in an isolated test 
 The pipeline runs four automated tests covering database health, task creation/completion/reopening/deletion, empty input validation, and CSRF protection.
 Pull requests run the build and tests. Successful pushes to main also publish the tested image to Docker Hub with latest and commit-specific tags.
 Docker Hub credentials are stored in GitHub Actions secrets. Temporary test containers and volumes are removed afterward.
-Server deployment is handled separately.
+After a successful push to main, the tested image is deployed to AWS
+automatically. See [Deployment Automation](#deployment-automation).
 
 ### AWS Deployment
 
@@ -436,6 +437,103 @@ and select the provisioned Prometheus data source if prompted.
 
 The dashboard provides visibility; external alert notifications
 have not been configured.
+
+### Deployment Automation
+
+Every successful push to `main` is deployed to the EC2 server
+without manual steps.
+
+#### Deployment Flow
+
+1. A commit is pushed to `main`.
+2. The **Test and Publish Task Tracker** workflow builds the image,
+   runs the automated tests, and pushes the image to Docker Hub
+   tagged `sha-<commit>`.
+3. When that workflow succeeds, the **Deploy Task Tracker to AWS**
+   workflow (`.github/workflows/deploy.yml`) starts.
+4. GitHub Actions signs in to AWS using OpenID Connect (OIDC) and
+   assumes a deployment role. No AWS access keys are stored in GitHub.
+5. The workflow sends a command to the EC2 instance through
+   AWS Systems Manager (SSM) Run Command. SSH is not used.
+6. On the server, the command:
+   - pulls the image for that exact commit,
+   - records it in `compose.release.yaml`,
+   - recreates only the `web` service and waits for it to become healthy,
+   - checks `http://localhost:8082/health`.
+7. The workflow fails if the health check fails or the command times out.
+
+Only pushes to `main` from this repository are deployed. Pull requests
+and failed test runs never reach the server. A lock file on the server
+prevents two deployments from running at the same time.
+
+#### AWS Configuration
+
+| Resource | Configuration |
+|---|---|
+| IAM OIDC identity provider | `token.actions.githubusercontent.com` with audience `sts.amazonaws.com` |
+| Deployment role | `GitHubTaskTrackerDeployRole`, trusted only for the `main` branch of this repository |
+| Role permissions | `ssm:SendCommand` on this instance and the `AWS-RunShellScript` document; `ssm:GetCommandInvocation` to read the result |
+| EC2 instance profile | `TaskTrackerEC2SSMRole` with the `AmazonSSMManagedInstanceCore` policy |
+
+The server must already contain the cloned repository, the private
+`.env` file, and the monitoring Compose files described above.
+
+#### GitHub Configuration
+
+Repository variables (Settings → Secrets and variables → Actions → Variables):
+
+| Variable | Purpose |
+|---|---|
+| `AWS_ROLE_ARN` | ARN of the deployment role |
+| `AWS_REGION` | `ap-south-1` |
+| `EC2_INSTANCE_ID` | ID of the EC2 instance |
+
+Enter values without leading or trailing spaces or tabs. A hidden tab
+in a copied value makes AWS reject the request.
+
+#### Verify a Deployment
+
+- In GitHub, open **Actions → Deploy Task Tracker to AWS** and check that
+  the latest run succeeded. The log of the
+  **Deploy tested image and verify health** step ends with the deployed
+  image tag and `Deployment and health verification succeeded.`
+- In AWS, open **Systems Manager → Run Command → Command history** in the
+  Mumbai region to see the command and its output.
+- On the server, confirm the running image:
+
+```sh
+sudo docker inspect --format '{{.Config.Image}}' docker-compose-task-tracker-web-1
+```
+
+#### Roll Back
+
+Every published image is tagged with its commit, so an earlier version
+can be restored.
+
+- **From GitHub:** open an earlier successful run of
+  **Deploy Task Tracker to AWS** and select **Re-run all jobs**. The re-run
+  deploys the image from that run's commit.
+- **On the server:** set the image in `compose.release.yaml` to an earlier
+  tag and recreate the web service:
+
+```sh
+cd ~/docker-compose-task-tracker
+sudo docker compose -p docker-compose-task-tracker \
+  -f compose.aws.yaml -f compose.monitoring.yaml \
+  -f compose.grafana.yaml -f compose.release.yaml \
+  up -d --no-deps --wait web
+```
+
+Include `compose.release.yaml` in manual Compose commands on the server
+so the deployed image version is kept. The next push to `main` deploys
+the newest commit again.
+
+#### Verification
+
+- Pushed a commit to `main` and confirmed both workflows ran automatically.
+- Confirmed the deployment run reported the image tag of the pushed commit.
+- Confirmed `/health` returned `{"status":"healthy"}` after the deployment.
+
 ### Project Scope
 
 This project demonstrates a local Docker Compose application with database integration and persistent storage.
