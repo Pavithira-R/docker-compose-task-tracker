@@ -598,9 +598,28 @@ the newest commit again.
 
 ### Project Scope
 
-This project demonstrates a local Docker Compose application with database integration and persistent storage.
+This project takes a Flask and PostgreSQL application through the full
+DevOps lifecycle:
 
-Cloud deployment, automated deployment, and monitoring dashboards are planned extensions.
+- Containerized with Docker and run locally with Docker Compose.
+- Tested by GitHub Actions on pull requests and pushes to `main`, with
+  tested images from `main` published to Docker Hub.
+- Deployed to an AWS EC2 instance that recovers automatically after a reboot.
+- Released automatically to AWS after every successful push to `main`,
+  without stored AWS keys.
+- Monitored with Prometheus and a Grafana dashboard.
+
+#### Known Limitations
+
+This is a practice deployment, not a production service:
+
+- The application is served over HTTP without HTTPS.
+- There are no user accounts; anyone with access can manage all tasks.
+- Only allowed IP addresses can reach the application, so reviewers need
+  their IP address added to the EC2 security group.
+- The dashboard has no external alert notifications.
+- Everything runs on a single EC2 instance, with no load balancing or
+  automated database backups.
 
 ### Author
 
