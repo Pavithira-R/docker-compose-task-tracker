@@ -270,6 +270,87 @@ Pull requests run the build and tests. Successful pushes to main also publish th
 Docker Hub credentials are stored in GitHub Actions secrets. Temporary test containers and volumes are removed afterward.
 Server deployment is handled separately.
 
+### AWS Deployment
+
+Deployed on an Ubuntu 24.04 LTS EC2 instance in Mumbai
+(ap-south-1), using Docker Engine and Docker Compose.
+
+The standalone `compose.aws.yaml` configuration pulls the
+published application image from Docker Hub and runs it
+alongside PostgreSQL.
+
+#### Server Setup
+
+Install Docker Engine and the Compose plugin, clone this
+repository, and enter its directory.
+
+Create a private `.env` file containing:
+
+- POSTGRES_USER
+- POSTGRES_DB
+- POSTGRES_PASSWORD
+- SECRET_KEY
+
+Use separate random values for the database password and
+Flask secret key. Restrict file permissions:
+
+```sh
+chmod 600 .env
+```
+
+Never commit `.env` or SSH private keys.
+
+#### Start the Deployment
+
+```sh
+sudo docker compose -f compose.aws.yaml config --quiet
+sudo docker compose -f compose.aws.yaml pull
+sudo docker compose -f compose.aws.yaml up -d --wait --wait-timeout 180
+```
+
+#### Verify the Deployment
+
+```sh
+sudo docker compose -f compose.aws.yaml ps
+curl -fsS http://localhost:8082/health
+```
+
+Both services should report healthy. The health endpoint
+returns HTTP 200 with `{"status":"healthy"}`.
+
+Visit `http://<EC2-public-IP>:8082` from an allowed connection.
+
+#### Network Access
+
+The EC2 security group allows:
+
+| Port | Purpose | Source |
+|---|---|---|
+| 22 | SSH administration | My public IPv4 address /32 |
+| 8082 | Application access | My public IPv4 address /32 |
+
+PostgreSQL port 5432 is not published on the server.
+
+This is an HTTP practice deployment with access restricted
+to my IP. It does not yet include HTTPS or user accounts.
+Reviewers require a separately authorized source IP to access it.
+
+The public IP may change after stopping and starting EC2.
+
+#### Data and Cost Management
+
+PostgreSQL data is stored in a named Docker volume.
+
+Stop the EC2 instance between practice sessions to reduce
+compute usage. EBS storage continues to incur costs while
+the instance is stopped.
+
+Do not run `docker compose down -v` unless you intend to
+delete the saved database.
+
+Back up required data before terminating the instance and
+deleting its storage.
+
 ### Project Scope
 
 This project demonstrates a local Docker Compose application with database integration and persistent storage.
