@@ -1,0 +1,158 @@
+name: Deploy Task Tracker to AWS
+
+on:
+  workflow_run:
+    workflows: ["Test and Publish Task Tracker"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: task-tracker-aws-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Authenticate to AWS
+        uses: aws-actions/configure-aws-credentials@v6.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Deploy tested image and verify health
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+          INSTANCE_ID: ${{ vars.EC2_INSTANCE_ID }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import subprocess
+          import time
+
+          sha = os.environ["DEPLOY_SHA"]
+          instance = os.environ["INSTANCE_ID"]
+
+          if not re.fullmatch(r"[0-9a-f]{40}", sha):
+              raise SystemExit("Invalid commit SHA")
+
+          image = (
+              "pavithirarajkumar/docker-compose-task-tracker:"
+              f"sha-{sha}"
+          )
+
+          compose = (
+              "docker compose -p docker-compose-task-tracker "
+              "-f compose.aws.yaml "
+              "-f compose.monitoring.yaml "
+              "-f compose.grafana.yaml "
+              "-f compose.release.yaml"
+          )
+
+          commands = [
+              "set -eu",
+              "cd /home/ubuntu/docker-compose-task-tracker",
+              "test -r .env",
+              "test -f compose.monitoring.yaml",
+              "test -f compose.grafana.yaml",
+              "exec 9>/var/lock/task-tracker-deploy.lock",
+              "flock -w 60 9",
+              f"docker pull {image}",
+              (
+                  "printf 'services:\\n  web:\\n    image: %s\\n' "
+                  f"'{image}' > compose.release.yaml"
+              ),
+              (
+                  f"{compose} up -d --no-deps "
+                  "--wait --wait-timeout 180 web"
+              ),
+              "curl --max-time 15 -fsS http://localhost:8082/health",
+              "printf '\\nDeployed image: '",
+              (
+                  "docker inspect --format '{{.Config.Image}}' "
+                  "docker-compose-task-tracker-web-1"
+              ),
+          ]
+
+          request = {
+              "InstanceIds": [instance],
+              "DocumentName": "AWS-RunShellScript",
+              "Comment": f"Deploy Task Tracker {sha[:12]}",
+              "TimeoutSeconds": 120,
+              "Parameters": {
+                  "commands": commands,
+                  "executionTimeout": ["480"],
+              },
+          }
+
+          sent = subprocess.run(
+              [
+                  "aws", "ssm", "send-command",
+                  "--cli-input-json", json.dumps(request),
+                  "--output", "json",
+              ],
+              capture_output=True,
+              text=True,
+          )
+
+          if sent.returncode:
+              raise SystemExit(sent.stderr)
+
+          command_id = json.loads(sent.stdout)["Command"]["CommandId"]
+          print(f"Deployment command: {command_id}", flush=True)
+
+          for attempt in range(120):
+              result = subprocess.run(
+                  [
+                      "aws", "ssm", "get-command-invocation",
+                      "--command-id", command_id,
+                      "--instance-id", instance,
+                      "--output", "json",
+                  ],
+                  capture_output=True,
+                  text=True,
+              )
+
+              if result.returncode:
+                  if "InvocationDoesNotExist" in result.stderr:
+                      time.sleep(5)
+                      continue
+                  raise SystemExit(result.stderr)
+
+              invocation = json.loads(result.stdout)
+              status = invocation["Status"]
+
+              if status in (
+                  "Pending", "InProgress", "Delayed", "Cancelling"
+              ):
+                  time.sleep(5)
+                  continue
+
+              print(invocation.get("StandardOutputContent", ""))
+              print(invocation.get("StandardErrorContent", ""))
+
+              if status != "Success":
+                  raise SystemExit(f"Deployment failed: {status}")
+
+              print("Deployment and health verification succeeded.")
+              break
+          else:
+              raise SystemExit(
+                  "Timed out waiting. Check the command in AWS Run Command."
+              )
+          PY
