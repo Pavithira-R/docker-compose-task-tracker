@@ -95,15 +95,27 @@ The webpage is bound to `127.0.0.1` for local access.
 
 | File | Purpose |
 |---|---|
-| `app.py` | Application routes, database model, and health endpoint |
+| `app.py` | Application routes, database model, health endpoint, and metrics |
 | `templates/index.html` | Webpage template and responsive styles |
 | `requirements.txt` | Python dependencies |
+| `tests/test_app.py` | Automated application tests |
 | `Dockerfile` | Application image build instructions |
-| `compose.yaml` | Application, database, health checks, and volume configuration |
+| `compose.yaml` | Local application, database, health checks, and volume configuration |
+| `compose.aws.yaml` | AWS configuration that runs the published Docker Hub image |
+| `compose.monitoring.yaml` | Prometheus service and metrics storage |
+| `compose.grafana.yaml` | Grafana service and dashboard storage |
+| `monitoring/prometheus.yml` | Prometheus scrape configuration |
+| `monitoring/grafana/datasources/prometheus.yaml` | Grafana data source configuration |
+| `monitoring/task-tracker-dashboard.json` | Exported Grafana dashboard |
+| `.github/workflows/ci.yml` | Build, test, and image publishing workflow |
+| `.github/workflows/deploy.yml` | Automated AWS deployment workflow |
 | `.env.example` | Example environment configuration |
 | `.gitignore` | Files excluded from Git |
 | `.dockerignore` | Files excluded from the Docker build context |
 | `README.md` | Setup and usage documentation |
+
+The deployment workflow creates `compose.release.yaml` on the server to
+record the deployed image version. It is not stored in the repository.
 
 ### Prerequisites
 
